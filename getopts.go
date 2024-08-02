@@ -1,205 +1,272 @@
 /*
-   Copyright © 2024  M.Watermann, 10247 Berlin, Germany
-               All rights reserved
-           EMail : <support@mwat.de>
+Copyright © 2024  M.Watermann, 10247 Berlin, Germany
+
+			All rights reserved
+		EMail : <support@mwat.de>
 */
-package main
+
+package getopts
+
+import (
+	"os"
+	"slices"
+	"strconv"
+)
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
-import (
-	"context"
-	"crypto/tls"
-	"fmt"
-	"log"
-	"net"
-	"net/http"
-	"net/url"
-	"os"
-	"os/signal"
-	"path/filepath"
-	"runtime"
-	"syscall"
-	"time"
-
-	"github.com/NYTimes/gziphandler"
-	"github.com/mwat56/apachelogger"
-	"github.com/mwat56/errorhandler"
-	"github.com/mwat56/getopts"
+type (
+	// `TOpt` represents an option of a command line argument
+	TOpt string
 )
 
-// `exit()` Log `aMessage` and terminate the program.
-func exit(aMessage string) {
-	apachelogger.Err("APPNAME/main", aMessage)
-	runtime.Gosched() // let the logger write
-	log.Fatalln(aMessage)
-} // exit()
+// --------------------------------------------------------------------
+// TOpt methods
 
-// `redirHTTP()` Send HTTP clients to HTTPS server.
+// `Bool()` returns the option's value as a boolean value.
 //
-// see: https://gist.github.com/d-schmidt/587ceec34ce1334a5e60
-func redirHTTP(aWriter http.ResponseWriter, aRequest *http.Request) {
-	// Copy the original URL and replace the scheme:
-	targetURL := url.URL{
-		Scheme:     `https`,
-		Opaque:     aRequest.URL.Opaque,
-		User:       aRequest.URL.User,
-		Host:       aRequest.URL.Host,
-		Path:       aRequest.URL.Path,
-		RawPath:    aRequest.URL.RawPath,
-		ForceQuery: aRequest.URL.ForceQuery,
-		RawQuery:   aRequest.URL.RawQuery,
-		Fragment:   aRequest.URL.Fragment,
-	}
-	target := targetURL.String()
+// `0`, `f`, `F`, `n`, and `N` are considered `false` while
+// `1`, `t`, `T`, `y`, `Y`, `j`, `J`, `o`, `O` are considered `true`.
+//
+// Note that the mere existence of a commandline argument automatically
+// makes its option `true` by default.
+//
+// This method actually checks only the first character of the option's
+// value so one can write e.g. "false" or "NO" (for a `false` result),
+// or "True" or "yes" (for a `true` result).
+//
+// Returns:
+// - `bool`:The options's value as a Boolean.
+func (o TOpt) Bool() bool {
+	if 0 < len(o) {
+		switch o[:1] {
+		case `0`, `f`, `F`, `n`, `N`:
+			return false
 
-	apachelogger.Err(`APPNAME/main`, `redirecting to: `+target)
-	http.Redirect(aWriter, aRequest, target, http.StatusTemporaryRedirect)
-} // redirHTTP()
+		// case `1`, `t`, `T`, `y`, `Y`, `j`, `J`, `o`, `O`:
+		// 	// True, Yes (English), Ja (German), Oui (French)`
+		default:
+			return true
+		}
+	}
+
+	return true
+} // Bool()
+
+// `Float()` returns the option's value as a 64bit floating point.
+//
+// If the string is well-formed and near a valid floating point number,
+// [Float] returns the nearest floating point number rounded using
+// IEEE754 unbiased rounding.
+//
+// In case the option can't be converted to a float the method's result
+// will be the value `float64(0.0)`.
+//
+// Returns:
+// - `float64`: The options's value as a 64bit floating point.
+func (o TOpt) Float() float64 {
+	if "" == string(o) {
+		return float64(0.0)
+	}
+
+	if f64, err := strconv.ParseFloat(string(o), 64); (nil == err) && (f64 == f64) {
+		// for NaN the inequality comparison with itself returns true
+		return f64
+	}
+
+	return float64(0.0)
+} // Float()
+
+// `Int()` returns the option's value as an integer.
+//
+// In case the option can't be converted to an integer the method's result
+// will be the value `int(0)` (zero).
+//
+// Returns:
+// - `int`: The options's value as an integer.
+func (o TOpt) Int() int {
+	if "" == string(o) {
+		return 0
+	}
+
+	if i64, err := strconv.ParseInt(string(o), 10, 0); nil == err {
+		return int(i64)
+	}
+
+	return int(0)
+} // Int()
+
+// `String()` returns the option's value as a string.
+//
+// Returns:
+// - `string`: The value of `aKey` as a string.
+func (o TOpt) String() string {
+	return string(o)
+} // String()
+
+// --------------------------------------------------------------------
+// Internal types and their methods
+
+type (
+	// The internal map holding the command line arguments and options.
+	tArgs map[string]TOpt
+
+	// tArgIterator is a struct that holds the map and
+	// the current iteration state.
+	tArgIterator struct {
+		data  tArgs
+		keys  []string // Slice to hold keys of the map for iteration
+		index int      // Current index for iteration
+	}
 )
 
-// `setupSignals()` configures the capture of the interrupts `SIGINT`
-// `and `SIGTERM` to terminate the program gracefully.
-func setupSignals(aServer *http.Server) {
-	// handle `CTRL-C` and `kill(15)`.
-	c := make(chan os.Signal, 2)
-	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		for signal := range c {
-			msg := fmt.Sprintf("%s captured '%v', stopping program and exiting ...", filepath.Base(os.Args[0]), signal)
-			apachelogger.Err(`Nele/catchSignals`, msg)
-			log.Println(msg)
-			break
-		} // for
-
-		ctx, cancel := context.WithCancel(context.Background())
-		aServer.BaseContext = func(net.Listener) context.Context {
-			return ctx
-		}
-		aServer.RegisterOnShutdown(cancel)
-
-		ctxTimeout, cancelTimeout := context.WithTimeout(
-			context.Background(), time.Second*10)
-		defer cancelTimeout()
-		if err := aServer.Shutdown(ctxTimeout); nil != err {
-			exit(fmt.Sprintf("%s: %v", filepath.Base(os.Args[0]), err))
-		}
-	}()
-} // setupSignals()
-
-
-// Actually run the program …
-func main() {
-	var (
-		err     error
-		handler http.Handler
-		ph      *nele.TPageHandler
-	)
-	Me, _ := filepath.Abs(os.Args[0])
-
-	// Read INI files and commandline options
-	APPNAME.InitConfig()
-
-	if ph, err = nele.NewPageHandler(); nil != err {
-		nele.ShowHelp()
-		exit(fmt.Sprintf("%s: %v", Me, err))
+// `newArgIterator()` initialises a `tArgIterator` with the provided map.
+//
+// Returns:
+// - `*tArgIterator`: The new iterator for `aMap`.
+func newArgIterator(aMap tArgs) *tArgIterator {
+	keys := make([]string, 0, len(aMap))
+	for k := range aMap {
+		keys = append(keys, k)
 	}
 
-	// Setup the errorpage handler:
-	handler = errorhandler.Wrap(ph, ph)
+	// Sort the slice
+	slices.Sort(keys)
+	//
 
-	// Inspect `gzip` commandline argument and setup the Gzip handler:
-	if APPNAME.AppArgs.GZip {
-		handler = gziphandler.GzipHandler(handler)
+	return &tArgIterator{
+		data:  aMap,
+		keys:  keys,
+		index: 0,
+	}
+} // newArgIterator()
+
+/*
+// xNext returns the next key-value pair in the iteration.
+// It returns false if there are no more items.
+*/
+// `Next()` returns the next key-value pair in the iteration.
+// It returns `false` if there are no more items.
+//
+// Returns:
+// - rArg: The current key in the iteration.
+// - rOpt: The corresponding value for the current key.
+// - rOK: A boolean indicating whether there are more items to iterate over.
+func (m *tArgIterator) Next() (rArg string, rOpt TOpt, rOK bool) {
+	if m.index < len(m.keys) {
+		rArg = m.keys[m.index]
+		rOpt = m.data[rArg]
+		m.index++
+		rOK = true
+	} else {
+		rOK = false
 	}
 
-	// Inspect logging commandline arguments and setup the `ApacheLogger`:
-	handler = apachelogger.Wrap(handler, nele.AppArgs.AccessLog, nele.AppArgs.ErrorLog)
+	return
+} // Next()
 
-	ctxTimeout, cancelTimeout := context.WithTimeout(
-		context.Background(), time.Second*10)
-	defer cancelTimeout()
+// `Reset()` resets the iterator to the beginning.
+//
+// This method resets the iterator's current index to 0, effectively
+// starting the iteration from the beginning.
+func (m *tArgIterator) Reset() {
+	m.index = 0
+} // Reset()
 
-	// We need a `server` reference to use it in `setupSignals()`
-	// and to set some reasonable timeouts:
-	server := &http.Server{
-		// The TCP address for the server to listen on:
-		Addr: APPNAME.AppArgs.Addr,
-		// Return the base context for incoming requests on this server:
-		BaseContext: func(net.Listener) context.Context {
-			return ctxTimeout
-		},
-		// Request handler to invoke:
-		Handler: handler,
-		// Set timeouts so that a slow or malicious client
-		// doesn't hold resources forever
-		//
-		// The maximum amount of time to wait for the next request;
-		// if IdleTimeout is zero, the value of ReadTimeout is used:
-		IdleTimeout: 0,
-		// The amount of time allowed to read request headers:
-		ReadHeaderTimeout: 10 * time.Second,
-		// The maximum duration for reading the entire request,
-		// including the body:
-		ReadTimeout: 10 * time.Second,
-		// The maximum duration before timing out writes of the response:
-		// WriteTimeout: 10 * time.Second,
-		WriteTimeout: -1, // see whether this eliminates "i/o timeout HTTP/1.0"
-	}
-	if 0 < len(APPMAME.AppArgs.ErrorLog) {
-		apachelogger.SetErrLog(server)
-	}
-	setupSignals(server)
+var (
+	gIterator *tArgIterator
+	gPattern  []string
+)
 
-	if 0 < len(APPNAME.AppArgs.CertKey) && (0 < len(APPNAME.AppArgs.CertPem)) {
-		// start the HTTP to HTTPS redirector:
-		go http.ListenAndServe(APPNAME.AppArgs.Addr, http.HandlerFunc(redirHTTP))
+// --------------------------------------------------------------------
+// Internal functions
 
-		// see:
-		// https://ssl-config.mozilla.org/#server=golang&version=1.14.1&config=old&guideline=5.4
-		server.TLSConfig = &tls.Config{
-			MinVersion:               tls.VersionTLS10,
-			PreferServerCipherSuites: true,
-			CipherSuites: []uint16{
-				tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-				tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
-				tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
-				tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-				tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-				tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA,
-				tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA,
-				tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-				tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
-				tls.TLS_ECDHE_ECDSA_WITH_RC4_128_SHA,
-				tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
-				tls.TLS_RSA_WITH_AES_128_CBC_SHA256,
-				tls.TLS_RSA_WITH_AES_256_CBC_SHA,
-				tls.TLS_RSA_WITH_AES_128_CBC_SHA,
-				tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA,
-				tls.TLS_RSA_WITH_RC4_128_SHA,
-				tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, // #nosec G402
-			},
-		} // #nosec G402
-		// server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
+// `init()` automatically initialises the command-line argument parser
+// and sets up the associated parser for the arguments.
+func init() {
+	realInit()
+} // init()
 
-		s := fmt.Sprintf("%s listening HTTPS at: %s", Me, APPNAME.AppArgs.Addr)
-		log.Println(s)
-		apachelogger.Log("APPNAME/main", s)
-		exit(fmt.Sprintf("%s: %v", Me,
-			server.ListenAndServeTLS(APPNAME.AppArgs.CertPem, APPNAME.AppArgs.CertKey)))
+// `(realInit)` initialises the command-line argument parser.
+//
+// The function checks if at least one argument is passed and then initialises
+// an `arguments` map to store the command-line arguments and options. It
+// then gets the command-line arguments without the app's path/name,
+// iterates through them, and adds the argument and their corresponding
+// options to the `arguments` map. Finally, it initialises the iterator
+// `gIterator` with the `arguments` map.
+func realInit() {
+	// Check if at least one argument is passed
+	if 2 > len(os.Args) {
 		return
 	}
 
-	s := fmt.Sprintf("%s listening HTTP at: %s", Me, APPNAME.AppArgs.Addr)
-	log.Println(s)
-	apachelogger.Log("APPNAME/main", s)
-	exit(fmt.Sprintf("%s: %v", Me, server.ListenAndServe()))
+	arguments := make(tArgs)
+	// Get the commandline arguments w/o the app's path/name:
+	args := append(os.Args[1:], "")
+
+	// Ignore the peek-ahead dummy added at the end:
+	aLen := len(args) - 1
+
+	for i := 0; i < aLen; i++ {
+		a := args[i]
+		if 1 > len(a) {
+			continue
+		}
+		if '-' == a[0] {
+			a = a[1:]
+			p := args[i+1] // peek ahead
+			// If there's another value that is not an argument,
+			// ignore it:
+			if (0 < len(p)) && ('-' == p[0]) {
+				p = ""
+			} else {
+				i++
+			}
+			arguments[a] = TOpt(p)
+		}
+	}
+
+	// Initialise the iterator
+	gIterator = newArgIterator(arguments)
+} // realInit()
+
+func prepPattern(aPattern string) {
+
+}
+
+// --------------------------------------------------------------------
+// public functions
+
+func Getopts(aPattern string) (rArg string, rOpt TOpt, rOK bool) {
+	if nil == gPattern {
+		prepPattern(aPattern)
+	}
+
+	rArg, rOpt, rOK = gIterator.Next()
+
+	return
+} // Getopts()
+
+func Xmain() {
+	for {
+		a, o, n := Getopts("")
+		switch a {
+		case "b":
+			b := o.Bool()
+		case "f":
+			f := o.Float()
+		case "i":
+			i := o.Int()
+		case "s":
+			s := o.String()
+
+		}
+		if !n {
+			break
+		}
+	}
+
 } // main()
 
 /* _EoF_ */
