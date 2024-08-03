@@ -8,175 +8,11 @@ Copyright © 2024  M.Watermann, 10247 Berlin, Germany
 package getopts
 
 import (
+	"fmt"
 	"os"
-	"slices"
-	"strconv"
 )
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
-
-type (
-	// `TOpt` represents an option of a command line argument
-	TOpt string
-)
-
-// --------------------------------------------------------------------
-// TOpt methods
-
-// `Bool()` returns the option's value as a boolean value.
-//
-// `0`, `f`, `F`, `n`, and `N` are considered `false` while
-// `1`, `t`, `T`, `y`, `Y`, `j`, `J`, `o`, `O` are considered `true`.
-//
-// Note that the mere existence of a commandline argument automatically
-// makes its option `true` by default.
-//
-// This method actually checks only the first character of the option's
-// value so one can write e.g. "false" or "NO" (for a `false` result),
-// or "True" or "yes" (for a `true` result).
-//
-// Returns:
-// - `bool`:The options's value as a Boolean.
-func (o TOpt) Bool() bool {
-	if 0 < len(o) {
-		switch o[:1] {
-		case `0`, `f`, `F`, `n`, `N`:
-			return false
-
-		// case `1`, `t`, `T`, `y`, `Y`, `j`, `J`, `o`, `O`:
-		// 	// True, Yes (English), Ja (German), Oui (French)`
-		default:
-			return true
-		}
-	}
-
-	return true
-} // Bool()
-
-// `Float()` returns the option's value as a 64bit floating point.
-//
-// If the string is well-formed and near a valid floating point number,
-// [Float] returns the nearest floating point number rounded using
-// IEEE754 unbiased rounding.
-//
-// In case the option can't be converted to a float the method's result
-// will be the value `float64(0.0)`.
-//
-// Returns:
-// - `float64`: The options's value as a 64bit floating point.
-func (o TOpt) Float() float64 {
-	if "" == string(o) {
-		return float64(0.0)
-	}
-
-	if f64, err := strconv.ParseFloat(string(o), 64); (nil == err) && (f64 == f64) {
-		// for NaN the inequality comparison with itself returns true
-		return f64
-	}
-
-	return float64(0.0)
-} // Float()
-
-// `Int()` returns the option's value as an integer.
-//
-// In case the option can't be converted to an integer the method's result
-// will be the value `int(0)` (zero).
-//
-// Returns:
-// - `int`: The options's value as an integer.
-func (o TOpt) Int() int {
-	if "" == string(o) {
-		return 0
-	}
-
-	if i64, err := strconv.ParseInt(string(o), 10, 0); nil == err {
-		return int(i64)
-	}
-
-	return int(0)
-} // Int()
-
-// `String()` returns the option's value as a string.
-//
-// Returns:
-// - `string`: The value of `aKey` as a string.
-func (o TOpt) String() string {
-	return string(o)
-} // String()
-
-// --------------------------------------------------------------------
-// Internal types and their methods
-
-type (
-	// The internal map holding the command line arguments and options.
-	tArgs map[string]TOpt
-
-	// tArgIterator is a struct that holds the map and
-	// the current iteration state.
-	tArgIterator struct {
-		data  tArgs
-		keys  []string // Slice to hold keys of the map for iteration
-		index int      // Current index for iteration
-	}
-)
-
-// `newArgIterator()` initialises a `tArgIterator` with the provided map.
-//
-// Returns:
-// - `*tArgIterator`: The new iterator for `aMap`.
-func newArgIterator(aMap tArgs) *tArgIterator {
-	keys := make([]string, 0, len(aMap))
-	for k := range aMap {
-		keys = append(keys, k)
-	}
-
-	// Sort the slice
-	slices.Sort(keys)
-	//
-
-	return &tArgIterator{
-		data:  aMap,
-		keys:  keys,
-		index: 0,
-	}
-} // newArgIterator()
-
-/*
-// xNext returns the next key-value pair in the iteration.
-// It returns false if there are no more items.
-*/
-// `Next()` returns the next key-value pair in the iteration.
-// It returns `false` if there are no more items.
-//
-// Returns:
-// - rArg: The current key in the iteration.
-// - rOpt: The corresponding value for the current key.
-// - rOK: A boolean indicating whether there are more items to iterate over.
-func (m *tArgIterator) Next() (rArg string, rOpt TOpt, rOK bool) {
-	if m.index < len(m.keys) {
-		rArg = m.keys[m.index]
-		rOpt = m.data[rArg]
-		m.index++
-		rOK = true
-	} else {
-		rOK = false
-	}
-
-	return
-} // Next()
-
-// `Reset()` resets the iterator to the beginning.
-//
-// This method resets the iterator's current index to 0, effectively
-// starting the iteration from the beginning.
-func (m *tArgIterator) Reset() {
-	m.index = 0
-} // Reset()
-
-var (
-	gIterator *tArgIterator
-	gPattern  []string
-)
 
 // --------------------------------------------------------------------
 // Internal functions
@@ -184,89 +20,148 @@ var (
 // `init()` automatically initialises the command-line argument parser
 // and sets up the associated parser for the arguments.
 func init() {
-	realInit()
+	// This env var is set by `go -test`
+	if "true" == os.Getenv("testing") {
+		// This function is disabled during testing.
+		return
+	}
+	realInit(os.Args)
 } // init()
 
 // `(realInit)` initialises the command-line argument parser.
 //
-// The function checks if at least one argument is passed and then initialises
-// an `arguments` map to store the command-line arguments and options. It
-// then gets the command-line arguments without the app's path/name,
-// iterates through them, and adds the argument and their corresponding
-// options to the `arguments` map. Finally, it initialises the iterator
-// `gIterator` with the `arguments` map.
-func realInit() {
-	// Check if at least one argument is passed
-	if 2 > len(os.Args) {
+// The function checks if at least one argument is passed and then
+// initialises an arguments map to store the command-line arguments
+// and options. It then gets the command-line arguments without the
+// app's path/name, iterates through them, and adds the argument and
+// their corresponding options to the `arguments` map. Finally, it
+// initialises the internal iterator `gIterator` with the arguments map.
+func realInit(aArgList []string) {
+	arguments := make(tArgList)
+
+	// Check if at least one argument (apart from the running
+	// app's path/filename) is passed:
+	if 2 > len(aArgList) {
+		arguments[tOpt("0")] = TArg("0")
+
+		// Set up the global/internal iterator to avoid
+		// NIL pointer problems along the way
+		gIterator = newIterator(arguments)
 		return
 	}
 
-	arguments := make(tArgs)
-	// Get the commandline arguments w/o the app's path/name:
-	args := append(os.Args[1:], "")
+	// Get the commandline arguments w/o the app's path/name
+	// but an added (empty) argument to allow for a peek ahead:
+	optList := append(aArgList[1:], "")
 
-	// Ignore the peek-ahead dummy added at the end:
-	aLen := len(args) - 1
+	// Exclude the peek-ahead dummy added at the end:
+	oLen := len(optList) - 1
 
-	for i := 0; i < aLen; i++ {
-		a := args[i]
-		if 1 > len(a) {
+	for i := 0; i < oLen; i++ {
+		o := optList[i]
+		if len(o) < 2 {
+			// We expect at least `-o` i.e. two characters.
 			continue
 		}
-		if '-' == a[0] {
-			a = a[1:]
-			p := args[i+1] // peek ahead
-			// If there's another value that is not an argument,
-			// ignore it:
+		if '-' == o[0] {
+			// It's actually an option (not
+			// an unexpected argument)
+			o = o[1:]
+
+			//
+			//TODO: should we check for `--` as stdOut indicator?
+			//
+
+			p := optList[i+1] // peek ahead
+			// If there's another value that is not
+			// an argument, ignore it here:
 			if (0 < len(p)) && ('-' == p[0]) {
+				// leave it as subject of the next loop step
 				p = ""
 			} else {
 				i++
 			}
-			arguments[a] = TOpt(p)
+			arguments[tOpt(o)] = TArg(p)
 		}
 	}
 
-	// Initialise the iterator
-	gIterator = newArgIterator(arguments)
+	// Set up the global/internal iterator:
+	gIterator = newIterator(arguments)
 } // realInit()
-
-func prepPattern(aPattern string) {
-
-}
 
 // --------------------------------------------------------------------
 // public functions
 
-func Getopts(aPattern string) (rArg string, rOpt TOpt, rOK bool) {
-	if nil == gPattern {
-		prepPattern(aPattern)
-	}
+// `Getopts()` retrieves the next command-line option and its argument.
+//
+// The function uses an private iterator to retrieve the next option and
+// its argument. If the iterator has no more items, it returns `false` for
+// `rOK`. The retrieved option and argument are returned as `rOpt` and
+// `rArg` respectively.
+//
+// The `aPattern` parameter is used to initialise the iterator if it has
+// not been initialised yet.
+//
+// Parameters:
+//   - `aPattern`: The pattern declaring which commandline options to expect.
+//
+// Returns:
+//   - `rOpt`: The current option in the iteration.
+//   - `rArg`: The current option's argument in the iteration.
+//   - `rOK`: Indicator for whether there are more options to come.
+func Getopts(aPattern string) (rOpt string, rArg TArg, rOK bool) {
+	var ea *tExpectedArgs
 
-	rArg, rOpt, rOK = gIterator.Next()
+	if nil == gExpectedOpts {
+		ea = newExpectedArgs()
+		gExpectedOpts = ea
+	} else {
+		ea = gExpectedOpts
+	}
+	ea.parse(aPattern)
+
+	o, a, ok := gIterator.Next()
+	rOpt, rArg, rOK = string(o), a, ok
+	if ea.needArgument(o) {
+		if "" == string(rArg) {
+			rOpt = fmt.Sprintf("!> option %q requires an argument <!", rOpt)
+		}
+	}
 
 	return
 } // Getopts()
 
-func Xmain() {
-	for {
-		a, o, n := Getopts("")
-		switch a {
-		case "b":
-			b := o.Bool()
-		case "f":
-			f := o.Float()
-		case "i":
-			i := o.Int()
-		case "s":
-			s := o.String()
+func MySetup(aPattern string) {
+	var (
+		b   bool
+		f   float64
+		i   int
+		s   string
+		opt string
+	)
 
+	// Now loop through all available options:
+	for {
+		o, a, more := Getopts(aPattern)
+		switch o {
+		case "b":
+			b = a.Bool()
+		case "f":
+			f = a.Float()
+		case "i":
+			i = a.Int()
+		case "s":
+			s = a.String()
+		default:
+			opt = o
 		}
-		if !n {
+		if !more {
+			// No more options available
 			break
 		}
 	}
-
-} // main()
+	fmt.Printf("Bool: %t, Float: %f, Int: %d, String: %q, other: %v",
+		b, f, i, s, opt)
+} // MySetup()
 
 /* _EoF_ */
