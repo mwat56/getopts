@@ -1,13 +1,13 @@
 # GetOpts
 
 [![golang](https://img.shields.io/badge/Language-Go-green.svg)](https://golang.org/)
-[![GoDoc](https://godoc.org/github.com/mwat56/getopts?status.svg)](https://godoc.org/github.com/mwat56/getopts)
-[![Go Report](https://goreportcard.com/badge/github.com/mwat56/getopts)](https://goreportcard.com/report/github.com/mwat56/getopts)
-[![Issues](https://img.shields.io/github/issues/mwat56/getopts.svg)](https://github.com/mwat56/getopts/issues?q=is%3Aopen+is%3Aissue)
-[![Size](https://img.shields.io/github/repo-size/mwat56/getopts.svg)](https://github.com/mwat56/getopts/)
-[![Tag](https://img.shields.io/github/tag/mwat56/getopts.svg)](https://github.com/mwat56/getopts/tags)
-[![View examples](https://img.shields.io/badge/learn%20by-examples-0077b3.svg)](https://github.com/mwat56/getopts/blob/main/_demo/demo.go)
-[![License](https://img.shields.io/github/mwat56/getopts.svg)](https://github.com/mwat56/getopts/blob/main/LICENSE)
+[![GoDoc](https://godoc.org/github.com/mwat56/getopts?status.svg)](https://godoc.org/github.com/mwat56/go-getopts)
+[![Go Report](https://goreportcard.com/badge/github.com/mwat56/getopts)](https://goreportcard.com/report/github.com/mwat56/go-getopts)
+[![Issues](https://img.shields.io/github/issues/mwat56/getopts.svg)](https://github.com/mwat56/go-getopts/issues?q=is%3Aopen+is%3Aissue)
+[![Size](https://img.shields.io/github/repo-size/mwat56/getopts.svg)](https://github.com/mwat56/go-getopts/)
+[![Tag](https://img.shields.io/github/tag/mwat56/getopts.svg)](https://github.com/mwat56/go-getopts/tags)
+[![View examples](https://img.shields.io/badge/learn%20by-examples-0077b3.svg)](https://github.com/mwat56/go-getopts/blob/main/_demo/demo.go)
+[![License](https://img.shields.io/github/mwat56/getopts.svg)](https://github.com/mwat56/go-getopts/blob/main/LICENSE)
 
 - [GetOpts](#getopts)
 	- [Purpose](#purpose)
@@ -30,7 +30,7 @@
 You can use `Go` to install this package for you:
 
 ```bash
-go get -u github.com/mwat56/getopts
+go get -u github.com/mwat56/go-getopts
 ```
 
 ## Usage
