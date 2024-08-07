@@ -9,26 +9,74 @@ package getopts
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"runtime"
+	"sync"
 )
 
 //lint:file-ignore ST1017 - I prefer Yoda conditions
 
+type (
+	IHelpShower interface {
+		// `ShowHelp` is supposed to show some helpful information
+		// to the user if a help request was triggered by the
+		// commandline options `-h` or `--help`.
+		// If the function returns a non `nil` error value the getopts
+		// processing is aborted.
+		ShowHelp() error
+	}
+)
+
+// `HelpShower` implements the `IHelpShower` interface to provide some
+// helpful information to the user if the help request was triggered
+// by the commandline options `-h` or `--help`.
+//
+// If the `ShowHelp()` function returns a non `nil` error value the
+// getopts processing is aborted.
+//
+// Note: This variable must be setup before the [Get] function is called.
+var HelpShower IHelpShower
+
 // --------------------------------------------------------------------
 // Internal functions
+
+var (
+	// Internal flag signalling whether we're in testing/debugging mode:
+	gSomeTestsAreRunning bool
+
+	// Barrier for concurrent tests
+	gMtx sync.Mutex
+)
 
 // `init()` automatically initialises the command-line argument parser
 // and sets up the associated parser for the arguments.
 func init() {
-	// This env var is set by `go -test`
+	args := os.Args
+
+	//
+	//TODO: split os.Args into option groups using a pattern like:
+	// 	([\p{L}]+(\s+((\-+[\p{L}]+)\s*)+)+)
+	//
+
+	// This env var is set by `go -test`:
 	if "true" == os.Getenv("testing") {
-		// This function is disabled during testing.
-		return
+		// Apparently we're testing or debugging
+		gSomeTestsAreRunning = true
+
+		args = []string{
+			"testingApplication",
+			`-a`, // Flag option
+			`-i`, // Error: intended with argument => ignored
+			`--infile`, `config.in`,
+			`--help`, // Flag option
+		}
 	}
-	realInit(os.Args)
+
+	realInit(args)
 } // init()
 
-// `(realInit)` initialises the command-line argument parser.
+// `(realInit)` initialises the commandline argument parser.
 //
 // The function checks if at least one argument is passed and then
 // initialises an arguments map to store the command-line arguments
@@ -36,100 +84,64 @@ func init() {
 // app's path/name, iterates through them, and adds the argument and
 // their corresponding options to the `arguments` map. Finally, it
 // initialises the internal iterator `gIterator` with the arguments map.
+//
+// Parameters:
+//   - `aArgList`: A list of commandline options and arguments.
 func realInit(aArgList []string) {
-	arguments := make(tArgList)
-
-	// Check if at least one argument (apart from the running
-	// app's path/filename) is passed:
-	if 2 > len(aArgList) {
-		arguments[tOpt("0")] = TArg("0")
-
-		// Set up the global/internal iterator to avoid
-		// NIL pointer problems along the way
-		gIterator = newIterator(arguments)
-		return
+	if gSomeTestsAreRunning {
+		gMtx.Lock()
+		defer gMtx.Unlock()
 	}
-
-	// Get the commandline arguments w/o the app's path/name
-	// but an added (empty) argument to allow for a peek ahead:
-	optList := append(aArgList[1:], "")
-
-	// Exclude the peek-ahead dummy added at the end:
-	oLen := len(optList) - 1
-
-	for i := 0; i < oLen; i++ {
-		o := optList[i]
-		if len(o) < 2 {
-			// We expect at least `-o` i.e. two characters.
-			continue
-		}
-		if '-' == o[0] {
-			// It's actually an option (not
-			// an unexpected argument)
-			o = o[1:]
-
-			//
-			//TODO: should we check for `--` as stdOut indicator?
-			//
-
-			p := optList[i+1] // peek ahead
-			// If there's another value that is not
-			// an argument, ignore it here:
-			if (0 < len(p)) && ('-' == p[0]) {
-				// leave it as subject of the next loop step
-				p = ""
-			} else {
-				i++
-			}
-			arguments[tOpt(o)] = TArg(p)
-		}
-	}
+	oal := newOptArgList(aArgList)
 
 	// Set up the global/internal iterator:
-	gIterator = newIterator(arguments)
+	newIterator(oal)
 } // realInit()
 
 // --------------------------------------------------------------------
 // public functions
 
-// `Getopts()` retrieves the next command-line option and its argument.
+// `Get()` retrieves the next commandline option and its argument.
 //
-// The function uses an private iterator to retrieve the next option and
+// The function uses an internal iterator to retrieve the next option and
 // its argument. If the iterator has no more items, it returns `false` for
 // `rOK`. The retrieved option and argument are returned as `rOpt` and
 // `rArg` respectively.
 //
-// The `aPattern` parameter is used to initialise the iterator if it has
-// not been initialised yet.
+// The `aPattern` parameter is used to set up the internal iterator
+// to know which options to expect/accept.
 //
 // Parameters:
 //   - `aPattern`: The pattern declaring which commandline options to expect.
 //
 // Returns:
 //   - `rOpt`: The current option in the iteration.
-//   - `rArg`: The current option's argument in the iteration.
-//   - `rOK`: Indicator for whether there are more options to come.
-func Getopts(aPattern string) (rOpt string, rArg TArg, rOK bool) {
-	var ea *tExpectedArgs
-
-	if nil == gExpectedOpts {
-		ea = newExpectedArgs()
-		gExpectedOpts = ea
+//   - `rArg`: The option's argument in the iteration.
+//   - `rMore`: Indicator for whether there are more options to come.
+func Get(aPattern string) (rOpt string, rArg TArg, rMore bool) {
+	o, rArg, rMore := gIterator.setPattern(aPattern).Next()
+	if `` == o {
+		// This might happen if the last commandline option is
+		// invalid (i.e. not defined in `aPattern` or missing
+		// its required argument.)
+		rOpt = string(`?`)
 	} else {
-		ea = gExpectedOpts
-	}
-	ea.parse(aPattern)
-
-	o, a, ok := gIterator.Next()
-	rOpt, rArg, rOK = string(o), a, ok
-	if ea.needArgument(o) {
-		if "" == string(rArg) {
-			rOpt = fmt.Sprintf("!> option %q requires an argument <!", rOpt)
+		switch o {
+		case `h`, `-help`:
+			if nil != HelpShower {
+				if err := HelpShower.ShowHelp(); nil != err {
+					// Perhaps somebody needs time?
+					runtime.Gosched()
+					// And here we go ...
+					log.Fatalln(err.Error())
+				}
+			}
 		}
+		rOpt = string(o)
 	}
 
 	return
-} // Getopts()
+} // Get()
 
 func MySetup(aPattern string) {
 	var (
@@ -142,7 +154,7 @@ func MySetup(aPattern string) {
 
 	// Now loop through all available options:
 	for {
-		o, a, more := Getopts(aPattern)
+		o, a, more := Get(aPattern)
 		switch o {
 		case "b":
 			b = a.Bool()
@@ -160,6 +172,7 @@ func MySetup(aPattern string) {
 			break
 		}
 	}
+
 	fmt.Printf("Bool: %t, Float: %f, Int: %d, String: %q, other: %v",
 		b, f, i, s, opt)
 } // MySetup()

@@ -44,31 +44,58 @@ func Test_realInit(t *testing.T) {
 	}
 } // Test_realInit()
 
-func TestGetopts(t *testing.T) {
+func TestGet(t *testing.T) {
+	// Set getopts `init()` :: []string{
+	// 	"testingApplication",
+	// 	`-a`, // Flag option
+	// 	`-i`, // Error: expected with argument => skipped
+	// 	`--infile`, `config.in`,
+	// 	`--help`, // Flag option
+	// }
+	p1 := ""
+	o1 := "-help"
+	a1 := TArg("")
+	w1 := false
+
+	p2 := "a|b:|-celler|d|h|help"
+	o2 := "a"
+	a2 := TArg("")
+	w2 := true
+
+	p3 := p2
+	o3 := "?"
+	a3 := TArg("")
+	w3 := false
 
 	tests := []struct {
 		name     string
 		pattern  string
-		wantROpt string
-		wantRArg TArg
-		wantROK  bool
+		wantOpt  string
+		wantArg  TArg
+		wantMore bool
 	}{
+		{"1", p1, o1, a1, w1},
+		{"2", p2, o2, a2, w2},
+		{"3", p3, o3, a3, w3},
 		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotROpt, gotRArg, gotROK := Getopts(tt.pattern)
-			if gotROpt != tt.wantROpt {
-				t.Errorf("Getopts() gotROpt = %v, want %v", gotROpt, tt.wantROpt)
+			gotOpt, gotArg, gotMore := Get(tt.pattern)
+			if gotOpt != tt.wantOpt {
+				t.Errorf("%q: Getopts() gotOpt = %q, want %q",
+					tt.name, gotOpt, tt.wantOpt)
 			}
-			if gotRArg != tt.wantRArg {
-				t.Errorf("Getopts() gotRArg = %v, want %v", gotRArg, tt.wantRArg)
+			if gotArg != tt.wantArg {
+				t.Errorf("%q: Getopts() gotArg = %q, want %q",
+					tt.name, gotArg, tt.wantArg)
 			}
-			if gotROK != tt.wantROK {
-				t.Errorf("Getopts() gotROK = %v, want %v", gotROK, tt.wantROK)
+			if gotMore != tt.wantMore {
+				t.Errorf("%q: Getopts() gotMore = %t, want %t",
+					tt.name, gotMore, tt.wantMore)
 			}
 		})
 	}
-} // TestGetopts()
+} // TestGet()
 
 /* _EoF_ */
