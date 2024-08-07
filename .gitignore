@@ -1,8 +1,9 @@
-*~
 *.bak
-bin/
+*~
 .git/
 .github/
-TODO*
 .vscode/
+TODO*
 XXX*
+bin/
+partition*.go
