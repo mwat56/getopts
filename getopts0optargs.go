@@ -61,6 +61,7 @@ func (a TArg) Bool() bool {
 
 		case `1`, `t`, `T`, `y`, `Y`, `j`, `J`, `o`, `O`:
 			// True, Yes (English), Ja (German), Oui (French)`
+			return true
 		}
 	}
 
@@ -168,6 +169,7 @@ func (oa tOptArg) Equal(aOptArg tOptArg) bool {
 	if oa.opt != aOptArg.opt {
 		return false
 	}
+
 	return oa.arg == aOptArg.arg
 } // Equal()
 
@@ -178,6 +180,10 @@ func (oa tOptArg) Equal(aOptArg tOptArg) bool {
 // Returns:
 //   - `string`: The stringified version of the current option/argument.
 func (oa tOptArg) String() string {
+	if "" == oa.opt {
+		return ""
+	}
+
 	return fmt.Sprintf("[%q: %q]", oa.opt, oa.arg)
 } // String()
 
