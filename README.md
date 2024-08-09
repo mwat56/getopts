@@ -1,13 +1,13 @@
 # GetOpts
 
 [![golang](https://img.shields.io/badge/Language-Go-green.svg)](https://golang.org/)
-[![GoDoc](https://godoc.org/github.com/mwat56/getopts?status.svg)](https://godoc.org/github.com/mwat56/go-getopts)
-[![Go Report](https://goreportcard.com/badge/github.com/mwat56/getopts)](https://goreportcard.com/report/github.com/mwat56/go-getopts)
-[![Issues](https://img.shields.io/github/issues/mwat56/getopts.svg)](https://github.com/mwat56/go-getopts/issues?q=is%3Aopen+is%3Aissue)
-[![Size](https://img.shields.io/github/repo-size/mwat56/getopts.svg)](https://github.com/mwat56/go-getopts/)
-[![Tag](https://img.shields.io/github/tag/mwat56/getopts.svg)](https://github.com/mwat56/go-getopts/tags)
-[![View examples](https://img.shields.io/badge/learn%20by-examples-0077b3.svg)](https://github.com/mwat56/go-getopts/blob/main/_demo/demo.go)
-[![License](https://img.shields.io/github/mwat56/getopts.svg)](https://github.com/mwat56/go-getopts/blob/main/LICENSE)
+[![GoDoc](https://godoc.org/github.com/mwat56/getopts?status.svg)](https://godoc.org/github.com/mwat56/getopts)
+[![Go Report](https://goreportcard.com/badge/github.com/mwat56/getopts)](https://goreportcard.com/report/github.com/mwat56/getopts)
+[![Issues](https://img.shields.io/github/issues/mwat56/getopts.svg)](https://github.com/mwat56/getopts/issues?q=is%3Aopen+is%3Aissue)
+[![Size](https://img.shields.io/github/repo-size/mwat56/getopts.svg)](https://github.com/mwat56/getopts/)
+[![Tag](https://img.shields.io/github/tag/mwat56/getopts.svg)](https://github.com/mwat56/getopts/tags)
+[![View examples](https://img.shields.io/badge/learn%20by-examples-0077b3.svg)](https://github.com/mwat56/getopts/blob/main/_demo/demo.go)
+[![License](https://img.shields.io/github/mwat56/getopts.svg)](https://github.com/mwat56/getopts/blob/main/LICENSE)
 
 - [GetOpts](#getopts)
 	- [Purpose](#purpose)
@@ -30,7 +30,7 @@
 You can use `Go` to install this package for you:
 
 ```bash
-go get -u github.com/mwat56/go-getopts
+go get -u github.com/mwat56/getopts
 ```
 
 ## Usage
@@ -42,35 +42,36 @@ As an example here a simple use case:
 ```go
 func MySetup(aPattern string) {
 	var (
-		b   bool
-		f   float64
-		i   int
-		s   string
-		opt string
+		b bool
+		f float64
+		i int
+		o string
+		s string
 	)
 
-	// Now loop through all available options:
+	// Loop through all available options:
 	for {
-		o, a, more := getopts.Get(aPattern)
-		switch o {
+		opt, arg, more := Get(aPattern)
+		switch opt {
 		case "b":
-			b = a.Bool()
+			b = arg.Bool()
 		case "f":
-			f = a.Float()
+			f = arg.Float()
 		case "i":
-			i = a.Int()
+			i = arg.Int()
 		case "s":
-			s = a.String()
+			s = arg.String()
 		default:
-			opt = o
+			o = opt
 		}
 		if !more {
 			// No more options available
 			break
 		}
 	}
+
 	fmt.Printf("Bool: %t, Float: %f, Int: %d, String: %q, other: %v",
-		b, f, i, s, opt)
+		b, f, i, s, o)
 } // MySetup()
 ```
 
@@ -78,7 +79,7 @@ Of course, you would need to give a valid [`pattern`](#go-usage). And you would 
 
 ### Options pattern
 
-Here comes a brief comparison between the use og `getopts` in a shell script and in Go.
+Here comes a brief comparison between the use of `getopts` in a shell script and in Go.
 
 #### Bash usage
 
@@ -154,7 +155,7 @@ The _pattern_ to use look similar but not identical:
 
 A leading colon in the _pattern_ is not needed here because any problems are handled internally anyway. One common problem, for example, is giving an option on the commandline that requires an argument (e.g. a filename or a certain value) without providing that argument. This Go implementation of `getopts()` simply ignores such option, and it's up to the developer to decide what to do if the option wasn't provided by the app user (which, BTW, a developer has to do anyway).
 
-While the *nix _getopts_ allows only for single letter options, we want to be able to work with long options like `--help` as well. Hence we need a separator between the options which is here the pipe symbol `|`. so a pattern for this Go implementation could look like this:
+While the *nix _getopts_ allows only for single letter options, we want to be able to work with long options like `--help` as well. Hence we need a separator between the options which is here the pipe symbol `|`. So a pattern for this Go implementation could look like this:
 
    - `a|i:|-input:|h|-help|o:|-output:|q|v`
 

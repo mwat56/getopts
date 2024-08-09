@@ -123,7 +123,7 @@ func Get(aPattern string) (rOpt string, rArg TArg, rMore bool) {
 	if `` == o {
 		// This might happen if the last commandline option is
 		// invalid (i.e. not defined in `aPattern` or missing
-		// its required argument.)
+		// its required argument).
 		rOpt = string(`?`)
 	} else {
 		switch o {
@@ -145,27 +145,27 @@ func Get(aPattern string) (rOpt string, rArg TArg, rMore bool) {
 
 func MySetup(aPattern string) {
 	var (
-		b   bool
-		f   float64
-		i   int
-		s   string
-		opt string
+		b bool
+		f float64
+		i int
+		o string
+		s string
 	)
 
-	// Now loop through all available options:
+	// Loop through all available options:
 	for {
-		o, a, more := Get(aPattern)
-		switch o {
+		opt, arg, more := Get(aPattern)
+		switch opt {
 		case "b":
-			b = a.Bool()
+			b = arg.Bool()
 		case "f":
-			f = a.Float()
+			f = arg.Float()
 		case "i":
-			i = a.Int()
+			i = arg.Int()
 		case "s":
-			s = a.String()
+			s = arg.String()
 		default:
-			opt = o
+			o = opt
 		}
 		if !more {
 			// No more options available
@@ -174,7 +174,7 @@ func MySetup(aPattern string) {
 	}
 
 	fmt.Printf("Bool: %t, Float: %f, Int: %d, String: %q, other: %v",
-		b, f, i, s, opt)
+		b, f, i, s, o)
 } // MySetup()
 
 /* _EoF_ */
